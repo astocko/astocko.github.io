@@ -1,0 +1,206 @@
+    <!DOCTYPE html>
+<html lang="en-us">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="author" content="Alexander Stocko">
+		<meta name="description" content="Thoughts on computer science, economics, and finance">
+		<meta name="generator" content="Hugo 0.14" />
+		<title>c macros &amp; terse c &middot; Applied Knowledge</title>
+		<link rel="shortcut icon" href="http://astocko.com/images/favicon.ico">
+		<link rel="stylesheet" href="http://astocko.com/css/style.css">
+		<link rel="stylesheet" href="http://astocko.com/css/highlight.css">
+		<link href="http://astocko.com/index.xml" rel="alternate" type="application/rss+xml" title="Applied Knowledge" />
+	</head>
+    <body>
+       <nav class="main-nav">
+	
+	
+		<a href='http://astocko.com/'> <span class="arrow">←</span>Home</a>
+	
+
+	
+		<a href='http://astocko.com/about'>About</a>
+	
+
+	
+	<a class="cta" href="http://astocko.com/index.xml">Subscribe</a>
+	
+</nav>
+
+        <section id="wrapper">
+            <article class="post">
+                <header>
+                    <h1>c macros &amp; terse c</h1>
+                    <h2 class="headline">January 18, 2015</h2>
+                </header>
+                <section id="post-body">
+                    <p>C macro magic is typically frowned upon in the developer community. Heavy preprocessor usage can make code hard to read, expansion difficult to understand, and the resulting code error prone. While all these things are true, macros do have nice uses cases such as in the implementation of high performance generic containers in C (see <a href="https://github.com/attractivechaos/klib">klib</a>).</p>
+
+<p>I have also encountered significant code bases in which macros where used as a semantic overlay easing the programmer&rsquo;s transition from their preferred language into C. One such example is Kx System&rsquo;s <a href="http://kx.com/kdb-plus.php">kdb+</a>, <a href="http://queue.acm.org/detail.cfm?id=1531242">Arthur Whitney&rsquo;s</a> high performance database system which is widely deployed in the financial industry.</p>
+
+<p>Arthur Whitney designed the K and Q programming languages and his love for terse code has translated into their implementations. Following is a short code block from one of kdb+&rsquo;s include files <a href="http://kx.com/q/c/c/k.h">k.h</a>:</p>
+
+<pre><code class="language-C">#ifndef KX
+#define KX
+typedef char*S,C;typedef unsigned char G;typedef short H;typedef int I;typedef long long J;typedef float E;typedef double F;typedef void V;
+#ifdef __cplusplus
+extern&quot;C&quot;{
+#endif
+#ifndef KXVER
+#error &quot;Set KXVER=3 for kdb+3.0 or standalone c-api after 2011-04-20. Otherwise set KXVER=2&quot;
+#endif
+#if KXVER&gt;=3
+typedef struct k0{signed char m,a,t;C u;I r;union{G g;H h;I i;J j;E e;F f;S s;struct k0*k;struct{J n;G G0[1];};};}*K;
+typedef struct{G g[16];}U;
+#define kU(x) ((U*)kG(x))
+#define xU ((U*)xG)
+extern K ku(U),ktn(I,J),kpn(S,J);
+extern I setm(I);
+#define DO(n,x)	{J i=0,_i=(n);for(;i&lt;_i;++i){x;}}
+#else
+typedef struct k0{I r;H t,u;union{G g;H h;I i;J j;E e;F f;S s;struct k0*k;struct{I n;G G0[1];};};}*K;
+extern K ktn(I,I),kpn(S,I);
+#define DO(n,x)	{I i=0,_i=(n);for(;i&lt;_i;++i){x;}}
+#endif
+#ifdef __cplusplus
+}
+#endif
+//#include&lt;string.h&gt;
+// vector accessors, e.g. kF(x)[i] for float&amp;datetime
+#define kG(x)	((x)-&gt;G0)
+#define kC(x)	kG(x)
+#define kH(x)	((H*)kG(x))
+#define kI(x)	((I*)kG(x))
+#define kJ(x)	((J*)kG(x))
+#define kE(x)	((E*)kG(x))
+#define kF(x)	((F*)kG(x))
+#define kS(x)	((S*)kG(x))
+#define kK(x)	((K*)kG(x))
+.....
+</code></pre>
+
+<p>A cursory glance reveals that types are aliased with very short identifiers. Accessor macros are provided for different struct values and there is also a DO loop.</p>
+
+<p>The source file <a href="http://kx.com/q/c/c/c.c">c.c</a> shows how these macros are used and hints at what the entire kdb+ code base probably looks like.</p>
+
+<pre><code class="language-C">#define Q(e,s) {if(e)return printf(&quot;%s\n&quot;,s),-1;}      //error
+
+int main(){K x,y;int c=khpu(&quot;localhost&quot;,5001,&quot;usr:pwd&quot;);
+ Q(c&lt;0,&quot;connect&quot;)Q(!c,&quot;access&quot;)
+ Q(!k(-c,&quot;`trade insert(12:34:56.789;`xx;93.5;300)&quot;,(K)0),&quot;err&quot;) // statement insert
+ Q(!(x=k(c,&quot;select sum size by sym from trade&quot;,0)),&quot;err&quot;)    // statement select
+ Q(!(x=ktd(x)),&quot;type&quot;)                   // flip from keyedtable(dict)
+  y=x-&gt;k;                                // dict from flip
+  y=kK(y)[1],printf(&quot;%d cols:\n&quot;,y-&gt;n);  // data from dict
+  y=kK(y)[0],printf(&quot;%d rows:\n&quot;,y-&gt;n);  // column 0
+  printf(&quot;%s\n&quot;,kS(y)[0]);               // sym 0 
+  r0(x);                                 // release memory
+ x=knk(4,kt(1000*(time(0)%86400)),ks(&quot;xx&quot;),kf(93.5),ki(300)); // data record
+// DO(10000,Q(!k(-c,&quot;insert&quot;,ks((S)&quot;trade&quot;),r1(x),(K)0),es)) // 10000 asynch inserts
+// k(c,&quot;&quot;,(K)0); // synch chase
+// return 0;
+ Q(!k(-c,&quot;insert&quot;,ks(&quot;trade&quot;),x,(K)0),&quot;err&quot;)                           // parameter insert
+ Q(!(x=k(c,&quot;{[x]select from trade where size&gt;x}&quot;,ki(100),(K)0)),&quot;err&quot;) // parameter select
+  r0(x);
+ close(c);
+ return 0;}
+*/
+</code></pre>
+
+<p>The code is terse, but for someone with Arthur&rsquo;s background, easy to read and write. Essentially he is mapping his stylistic preference for APL based languages onto C. While there is a certain elegeance to his approach, I do not recommend copying his style and becoming a macro addict in your large production applications which need to survive maintenance cycles.</p>
+
+<p>If you&rsquo;re interested in exploring the world of array programming languages, <a href="http://www.jsoftware.com/">J</a> is a powerful open source implementation.</p>
+
+                </section>
+            </article>
+            <footer id="post-meta" class="clearfix">
+                <a href="https://twitter.com/astocko">
+                        <img class="avatar" src="http://astocko.com/images/avatar.png">
+                        <div>
+                            <span class="dark">Alexander Stocko</span>
+                            <span>Managing Principal @ ARD Capital, LLC</span>
+                        </div>
+                    </a>
+                <section id="sharing">
+                    <a class="twitter" href="https://twitter.com/intent/tweet?text=http%3a%2f%2fastocko.com%2fpost%2fc-macros-terse-c%2f - c%20macros%20%26%20terse%20c by @astocko"><span class="icon-twitter"> Tweet</span></a>
+
+<a class="facebook" href="#" onclick="
+    window.open(
+      'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(location.href),
+      'facebook-share-dialog',
+      'width=626,height=436');
+    return false;"><span class="icon-facebook-rect"> Share</span>
+</a>
+
+                </section>
+            </footer>
+
+            
+                <section class="disqus">
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        var disqus_shortname = 'astocko';
+        var disqus_developer = 0; 
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = 'https://' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="//disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="//disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+            
+
+            <ul id="post-list" class="archive readmore">
+    <h3>Read more</h3>
+    
+    
+        
+        <li>
+            <a href="http://astocko.com/post/x86-64-generation-jit/">dynamic x86-64 generation &amp; jit<aside class="dates">Jul 12</aside></a>
+        </li>
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/column-oriented-formats/">column oriented databases &amp; formats<aside class="dates">Apr 30</aside></a>
+        </li>
+        
+   
+    
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/c-resources/">c resources<aside class="dates">Jan 3</aside></a>
+        </li>
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/reboot/">reboot<aside class="dates">Dec 23</aside></a>
+        </li>
+        
+   
+</ul>
+            <footer id="footer">
+    <p class="small">
+        © Copyright 2015 Alexander Stocko
+    </p>
+</footer>
+        </section>
+
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+<script src="http://astocko.com/js/main.js"></script>
+<script src="http://astocko.com/js/highlight.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+    </body>
+</html>

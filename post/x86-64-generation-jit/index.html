@@ -1,0 +1,208 @@
+    <!DOCTYPE html>
+<html lang="en-us">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="author" content="Alexander Stocko">
+		<meta name="description" content="Thoughts on computer science, economics, and finance">
+		<meta name="generator" content="Hugo 0.14" />
+		<title>dynamic x86-64 generation &amp; jit &middot; Applied Knowledge</title>
+		<link rel="shortcut icon" href="http://astocko.com/images/favicon.ico">
+		<link rel="stylesheet" href="http://astocko.com/css/style.css">
+		<link rel="stylesheet" href="http://astocko.com/css/highlight.css">
+		<link href="http://astocko.com/index.xml" rel="alternate" type="application/rss+xml" title="Applied Knowledge" />
+	</head>
+    <body>
+       <nav class="main-nav">
+	
+	
+		<a href='http://astocko.com/'> <span class="arrow">←</span>Home</a>
+	
+
+	
+		<a href='http://astocko.com/about'>About</a>
+	
+
+	
+	<a class="cta" href="http://astocko.com/index.xml">Subscribe</a>
+	
+</nav>
+
+        <section id="wrapper">
+            <article class="post">
+                <header>
+                    <h1>dynamic x86-64 generation &amp; jit</h1>
+                    <h2 class="headline">July 12, 2015</h2>
+                </header>
+                <section id="post-body">
+                    
+
+<p>My linear genetic programming engine relies on dynamic generation of x86-64 machine code to create thousands of functions which are evolved over generations. My initial version of the code generation backend was a small and simple C library which was capable of assembling 30 core instructions to a memory mapped region. Using the Intel manuals, the X86 Opcode and Instruction Reference, and Agner Fog&rsquo;s tables, I patched together a usable library. Adding more features to the GP engine necessitated extending the machine code generator. When the complexities of implementing the later SSE opcodes and AVX extensions became a major timesink, I began looking around for replacements.</p>
+
+<p><a href="https://github.com/kobalicek/asmjit">AsmJit</a> is a stellar x86/x64 JIT and Remote Assembler implemented in C++. It has support for the entire Intel instruction set up to AVX2, features a high level cross-platform compiler which makes memory addressing, labels, and the stack painless. Moreover, AsmJit has a wonderful logging engine and error handling mechanism to enable debugging generated code.</p>
+
+<h5 id="example:59b35c32c7263523b55e5521ceedf0dc">Example</h5>
+
+<pre><code>#include &lt;asmjit/asmjit.h&gt;
+
+using namespace asmjit;
+
+int main(int argc, char* argv[]) {
+  JitRuntime runtime;
+  X86Compiler c(&amp;runtime);
+
+  // Function returning 'int' accepting pointer and two indexes.
+  c.addFunc(kFuncConvHost, FuncBuilder3&lt;int, const int*, intptr_t, intptr_t&gt;());
+
+  X86GpVar p(c, kVarTypeIntPtr, &quot;p&quot;);
+  X86GpVar aIndex(c, kVarTypeIntPtr, &quot;aIndex&quot;);
+  X86GpVar bIndex(c, kVarTypeIntPtr, &quot;bIndex&quot;);
+
+  c.setArg(0, p);
+  c.setArg(1, aIndex);
+  c.setArg(2, bIndex);
+
+  X86GpVar a(c, kVarTypeInt32, &quot;a&quot;);
+  X86GpVar b(c, kVarTypeInt32, &quot;b&quot;);
+
+  // Read 'a' by using a memory operand having base register, index register
+  // and scale. Translates to 'mov a, dword ptr [p + aIndex &lt;&lt; 2]'.
+  c.mov(a, ptr(p, aIndex, 2));
+
+  // Read 'b' by using a memory operand having base register only. Variables
+  // 'p' and 'bIndex' are both modified.
+
+  // Shift bIndex by 2 (exactly the same as multiplying by 4).
+  // And add scaled 'bIndex' to 'p' resulting in 'p = p + bIndex * 4'.
+  c.shl(bIndex, 2);
+  c.add(p, bIndex);
+
+  // Read 'b'.
+  c.mov(b, ptr(p));
+
+  // a = a + b;
+  c.add(a, b);
+
+  c.ret(a);
+  c.endFunc();
+
+  // The prototype of the generated function changed also here.
+  typedef int (*FuncType)(const int*, intptr_t, intptr_t);
+  FuncType func = asmjit_cast&lt;FuncType&gt;(c.make());
+
+  // Array passed to 'func'
+  const int array[] = { 1, 2, 3, 5, 8, 13 };
+
+  int x = func(array, 1, 2);
+  int y = func(array, 3, 5);
+
+  printf(&quot;x=%d\n&quot;, x); // Outputs &quot;x=5&quot;.
+  printf(&quot;y=%d\n&quot;, y); // Outputs &quot;y=18&quot;.
+
+  runtime.release((void*)func);
+  return 0;
+}
+</code></pre>
+
+<h5 id="references:59b35c32c7263523b55e5521ceedf0dc">References</h5>
+
+<ul>
+<li><a href="http://www.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html">Intel® 64 and IA-32 Architectures Software Developer Manuals</a></li>
+<li><a href="http://ref.x86asm.net/">X86 Opcode and Instruction Reference</a></li>
+<li><a href="http://www.agner.org/optimize/instruction_tables.pdf">Agner Fog&rsquo;s Instruction Tables</a></li>
+<li><a href="https://github.com/kobalicek/asmjit">AsmJit</a></li>
+<li><a href="http://cswww.essex.ac.uk/staff/poli/gp-field-guide/71LinearGeneticProgramming.html">Linear Genetic Programming</a></li>
+</ul>
+
+                </section>
+            </article>
+            <footer id="post-meta" class="clearfix">
+                <a href="https://twitter.com/astocko">
+                        <img class="avatar" src="http://astocko.com/images/avatar.png">
+                        <div>
+                            <span class="dark">Alexander Stocko</span>
+                            <span>Managing Principal @ ARD Capital, LLC</span>
+                        </div>
+                    </a>
+                <section id="sharing">
+                    <a class="twitter" href="https://twitter.com/intent/tweet?text=http%3a%2f%2fastocko.com%2fpost%2fx86-64-generation-jit%2f - dynamic%20x86-64%20generation%20%26%20jit by @astocko"><span class="icon-twitter"> Tweet</span></a>
+
+<a class="facebook" href="#" onclick="
+    window.open(
+      'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(location.href),
+      'facebook-share-dialog',
+      'width=626,height=436');
+    return false;"><span class="icon-facebook-rect"> Share</span>
+</a>
+
+                </section>
+            </footer>
+
+            
+                <section class="disqus">
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        var disqus_shortname = 'astocko';
+        var disqus_developer = 0; 
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = 'https://' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="//disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="//disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+            
+
+            <ul id="post-list" class="archive readmore">
+    <h3>Read more</h3>
+    
+    
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/column-oriented-formats/">column oriented databases &amp; formats<aside class="dates">Apr 30</aside></a>
+        </li>
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/c-macros-terse-c/">c macros &amp; terse c<aside class="dates">Jan 18</aside></a>
+        </li>
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/c-resources/">c resources<aside class="dates">Jan 3</aside></a>
+        </li>
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/reboot/">reboot<aside class="dates">Dec 23</aside></a>
+        </li>
+        
+   
+</ul>
+            <footer id="footer">
+    <p class="small">
+        © Copyright 2015 Alexander Stocko
+    </p>
+</footer>
+        </section>
+
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+<script src="http://astocko.com/js/main.js"></script>
+<script src="http://astocko.com/js/highlight.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+    </body>
+</html>

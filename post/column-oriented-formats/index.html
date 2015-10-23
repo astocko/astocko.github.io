@@ -1,0 +1,221 @@
+    <!DOCTYPE html>
+<html lang="en-us">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="author" content="Alexander Stocko">
+		<meta name="description" content="Thoughts on computer science, economics, and finance">
+		<meta name="generator" content="Hugo 0.14" />
+		<title>column oriented databases &amp; formats &middot; Applied Knowledge</title>
+		<link rel="shortcut icon" href="http://astocko.com/images/favicon.ico">
+		<link rel="stylesheet" href="http://astocko.com/css/style.css">
+		<link rel="stylesheet" href="http://astocko.com/css/highlight.css">
+		<link href="http://astocko.com/index.xml" rel="alternate" type="application/rss+xml" title="Applied Knowledge" />
+	</head>
+    <body>
+       <nav class="main-nav">
+	
+	
+		<a href='http://astocko.com/'> <span class="arrow">←</span>Home</a>
+	
+
+	
+		<a href='http://astocko.com/about'>About</a>
+	
+
+	
+	<a class="cta" href="http://astocko.com/index.xml">Subscribe</a>
+	
+</nav>
+
+        <section id="wrapper">
+            <article class="post">
+                <header>
+                    <h1>column oriented databases &amp; formats</h1>
+                    <h2 class="headline">April 30, 2015</h2>
+                </header>
+                <section id="post-body">
+                    
+
+<p>Column oriented databases have become a staple in the big data analytics scene. This article will analyze the in-memory and on-disk formats of <a href="http://kx.com/kdb-plus.php">kdb+</a>.</p>
+
+<p>kdb+ is a high performance timeseries database implemented in the <a href="http://en.wikipedia.org/wiki/K_%28programming_language%29">K</a> language and widely deployed within the financial sector. <a href="http://en.wikipedia.org/wiki/Q_%28programming_language_from_Kx_Systems%29">Q</a> is a wrapper around K to provide an easier interface to the database. kdb+ is implemented as a column store which makes operations like aggregations extremely fast.</p>
+
+<p>###Architecture
+While kdb+ is both an in-memory and a persistent disk based column oriented data store, the in-memory representation and the on-disk file formats are quite simple. Tables in kdb+ are essentially ordered dictionaries of typed columns sorted on one or more columns. In python an in-memory table of stock symbols, dates, and their closing prices could be implemented as follows:</p>
+
+<pre><code>from collections import OrderedDict
+daily = OrderedDict(
+	[
+    	('symbol', [1, 1, 1, 1, 2, 2, 2, 2]), 
+        ('date', [0, 0, 0, 0, 0, 0, 0, 0]), 
+        ('prices', [90.01, 91.02, 92.03, 93.04, 60.01, 61.02, 62.02, 63.03])
+    ])
+</code></pre>
+
+<p>kdb+ makes tradeoffs in order to improve performance, two of which I have implemented in the table above and will explain below.</p>
+
+<h5 id="strings:4f945940ac3cd454a11bdc699f7ad3bf">Strings</h5>
+
+<p>Strings stored in tables are symbolized and mapped to integers in a bidirectional dictionary. This tradeoff enables very fast selects on columns like a stock symbol as we only have to seek for a integer (8bit to 64bit depending on the size of the symbol dictionary). For our table the symbol map could be implemented as:</p>
+
+<pre><code>symbols = {
+	1 : 'GOOG',
+    2 : 'YHOO'
+}
+symbols2 = {
+	'GOOG' : 1,
+    'YHOO' : 2
+}
+</code></pre>
+
+<h5 id="dates:4f945940ac3cd454a11bdc699f7ad3bf">Dates</h5>
+
+<p>Dates in kdb+ are also stored as integers and calculated as the distance from the epoch 01-01-2000. So, in our example implementation, 0 represents 01-01-2000.</p>
+
+<h5 id="disk-file-format:4f945940ac3cd454a11bdc699f7ad3bf">Disk File Format</h5>
+
+<p>kdb+ can export tables in multiple formats. First, the in-memory table can be written to a binary file in row format:</p>
+
+<pre><code>uint8,uint32,float
+1,0,90.01
+1,0,91.02
+1,0,92.03
+1,0,93.04
+2,0,60.01
+2,0,61.02
+2,0,62.03
+2,0,63.03
+</code></pre>
+
+<p>Secondly, the table can be splayed and each column is written to its own binary file:</p>
+
+<pre><code>symbols.col (uint8): [1, 1, 1, 1, 2, 2, 2, 2]
+dates.col (uint32): [0, 0, 0, 0, 0, 0, 0, 0]
+prices.col (float): [90.01, 91.02, 92.03, 93.04, 60.01, 61.02, 62.02, 63.03]
+</code></pre>
+
+<p>Thirdly, the table can be partitioned by a column value and then splayed:</p>
+
+<pre><code>symbol_1 directory:
+	dates.col (uint32): [0, 0, 0, 0]
+    prices.col (float): [90.01, 91.02, 92.03, 93.04]
+symbol_2 directory:
+	dates.col (uint32): [1, 1, 1, 1]
+    prices.col (float): [60.01, 61.02, 62.02, 63.03]
+</code></pre>
+
+<h5 id="querying:4f945940ac3cd454a11bdc699f7ad3bf">Querying</h5>
+
+<p>When kdb+ loads a table, it memory maps (mmap on linux) either the single table file, each column for a splayed table, or all columns for a partitioned table. Every splayed column is mapped as a continuous array of a data type and accessed accordingly. kdb+ also loads the symbol dictionary for symbol lookups. In our example, the table is sorted on the symbol and date columns.</p>
+
+<h6 id="select-price-where-symbol-goog:4f945940ac3cd454a11bdc699f7ad3bf">Select price WHERE symbol = &lsquo;GOOG&rsquo;</h6>
+
+<ul>
+<li><p>Symbol is a symbol column, so GOOG is looked up and mapped to 1</p></li>
+
+<li><p>In the single table file layout, we perform a binary search on the array of structures and find all rows with a symbol value of 1 and return them</p></li>
+
+<li><p>In the splayed table layout, we perform a binary search and record the indices of the symbol array where symbol = 1. Then we index into the memory mapped column (array) for price and use our recorded indices to select the matching entries. i.e. price[0:3].</p></li>
+
+<li><p>In the partitioned table, we perform the same steps as in the splayed table layout within the symbol_1 directory.</p></li>
+</ul>
+
+<p>Splaying a table enables us to seek through less data, particularly when dealing with wide row data sets, in order to find the records we want to query. As data size increases, partitioning tables on a column like symbol or date further reduces I/O overhead. Another benefit of single type columns is that aggregations such as calculating the mean or sum become single vector operations.</p>
+
+<h5 id="concluding-remarks:4f945940ac3cd454a11bdc699f7ad3bf">Concluding Remarks</h5>
+
+<p>kdb+ supports many more features, including indexing and compression, but the basic architecture is as described. The primary contributing factors to its performance are in its column oriented structure and data representation format. In a real world deployment, real-time data is typically appended to an in-memory table and then archived to a splayed/partitioned table sorted on one or multiple columns. Often, the same table is stored in varying sorted orders to further improve the performance of specific queries. Similar to big data database systems like Cassandra, tables are modeled to fit commonly executed queries.</p>
+
+                </section>
+            </article>
+            <footer id="post-meta" class="clearfix">
+                <a href="https://twitter.com/astocko">
+                        <img class="avatar" src="http://astocko.com/images/avatar.png">
+                        <div>
+                            <span class="dark">Alexander Stocko</span>
+                            <span>Managing Principal @ ARD Capital, LLC</span>
+                        </div>
+                    </a>
+                <section id="sharing">
+                    <a class="twitter" href="https://twitter.com/intent/tweet?text=http%3a%2f%2fastocko.com%2fpost%2fcolumn-oriented-formats%2f - column%20oriented%20databases%20%26%20formats by @astocko"><span class="icon-twitter"> Tweet</span></a>
+
+<a class="facebook" href="#" onclick="
+    window.open(
+      'https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(location.href),
+      'facebook-share-dialog',
+      'width=626,height=436');
+    return false;"><span class="icon-facebook-rect"> Share</span>
+</a>
+
+                </section>
+            </footer>
+
+            
+                <section class="disqus">
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        var disqus_shortname = 'astocko';
+        var disqus_developer = 0; 
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = 'https://' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="//disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="//disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+            
+
+            <ul id="post-list" class="archive readmore">
+    <h3>Read more</h3>
+    
+    
+        
+        <li>
+            <a href="http://astocko.com/post/x86-64-generation-jit/">dynamic x86-64 generation &amp; jit<aside class="dates">Jul 12</aside></a>
+        </li>
+        
+   
+    
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/c-macros-terse-c/">c macros &amp; terse c<aside class="dates">Jan 18</aside></a>
+        </li>
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/c-resources/">c resources<aside class="dates">Jan 3</aside></a>
+        </li>
+        
+   
+    
+        
+        <li>
+            <a href="http://astocko.com/post/reboot/">reboot<aside class="dates">Dec 23</aside></a>
+        </li>
+        
+   
+</ul>
+            <footer id="footer">
+    <p class="small">
+        © Copyright 2015 Alexander Stocko
+    </p>
+</footer>
+        </section>
+
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+<script src="http://astocko.com/js/main.js"></script>
+<script src="http://astocko.com/js/highlight.js"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+    </body>
+</html>

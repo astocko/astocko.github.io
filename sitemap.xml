@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  
+  <url>
+    <loc>http://astocko.com/</loc>
+    <lastmod>2015-07-12T11:54:19-04:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://astocko.com/post/x86-64-generation-jit/</loc>
+    <lastmod>2015-07-12T11:54:19-04:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://astocko.com/post/column-oriented-formats/</loc>
+    <lastmod>2015-04-30T11:51:37-04:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://astocko.com/post/c-macros-terse-c/</loc>
+    <lastmod>2015-01-18T11:48:49-04:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://astocko.com/post/c-resources/</loc>
+    <lastmod>2015-01-03T11:44:44-04:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://astocko.com/post/reboot/</loc>
+    <lastmod>2014-12-23T11:14:55-04:00</lastmod>
+  </url>
+  
+</urlset>

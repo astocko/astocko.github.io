@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Applied Knowledge</title>
+    <link>http://astocko.com/</link>
+    <description>Recent content on Applied Knowledge</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sun, 12 Jul 2015 11:54:19 -0400</lastBuildDate>
+    <atom:link href="http://astocko.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>dynamic x86-64 generation &amp; jit</title>
+      <link>http://astocko.com/post/x86-64-generation-jit/</link>
+      <pubDate>Sun, 12 Jul 2015 11:54:19 -0400</pubDate>
+      
+      <guid>http://astocko.com/post/x86-64-generation-jit/</guid>
+      <description>
+
+&lt;p&gt;My linear genetic programming engine relies on dynamic generation of x86-64 machine code to create thousands of functions which are evolved over generations. My initial version of the code generation backend was a small and simple C library which was capable of assembling 30 core instructions to a memory mapped region. Using the Intel manuals, the X86 Opcode and Instruction Reference, and Agner Fog&amp;rsquo;s tables, I patched together a usable library. Adding more features to the GP engine necessitated extending the machine code generator. When the complexities of implementing the later SSE opcodes and AVX extensions became a major timesink, I began looking around for replacements.&lt;/p&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://github.com/kobalicek/asmjit&#34;&gt;AsmJit&lt;/a&gt; is a stellar x86/x64 JIT and Remote Assembler implemented in C++. It has support for the entire Intel instruction set up to AVX2, features a high level cross-platform compiler which makes memory addressing, labels, and the stack painless. Moreover, AsmJit has a wonderful logging engine and error handling mechanism to enable debugging generated code.&lt;/p&gt;
+
+&lt;h5 id=&#34;example:59b35c32c7263523b55e5521ceedf0dc&#34;&gt;Example&lt;/h5&gt;
+
+&lt;pre&gt;&lt;code&gt;#include &amp;lt;asmjit/asmjit.h&amp;gt;
+
+using namespace asmjit;
+
+int main(int argc, char* argv[]) {
+  JitRuntime runtime;
+  X86Compiler c(&amp;amp;runtime);
+
+  // Function returning &#39;int&#39; accepting pointer and two indexes.
+  c.addFunc(kFuncConvHost, FuncBuilder3&amp;lt;int, const int*, intptr_t, intptr_t&amp;gt;());
+
+  X86GpVar p(c, kVarTypeIntPtr, &amp;quot;p&amp;quot;);
+  X86GpVar aIndex(c, kVarTypeIntPtr, &amp;quot;aIndex&amp;quot;);
+  X86GpVar bIndex(c, kVarTypeIntPtr, &amp;quot;bIndex&amp;quot;);
+
+  c.setArg(0, p);
+  c.setArg(1, aIndex);
+  c.setArg(2, bIndex);
+
+  X86GpVar a(c, kVarTypeInt32, &amp;quot;a&amp;quot;);
+  X86GpVar b(c, kVarTypeInt32, &amp;quot;b&amp;quot;);
+
+  // Read &#39;a&#39; by using a memory operand having base register, index register
+  // and scale. Translates to &#39;mov a, dword ptr [p + aIndex &amp;lt;&amp;lt; 2]&#39;.
+  c.mov(a, ptr(p, aIndex, 2));
+
+  // Read &#39;b&#39; by using a memory operand having base register only. Variables
+  // &#39;p&#39; and &#39;bIndex&#39; are both modified.
+
+  // Shift bIndex by 2 (exactly the same as multiplying by 4).
+  // And add scaled &#39;bIndex&#39; to &#39;p&#39; resulting in &#39;p = p + bIndex * 4&#39;.
+  c.shl(bIndex, 2);
+  c.add(p, bIndex);
+
+  // Read &#39;b&#39;.
+  c.mov(b, ptr(p));
+
+  // a = a + b;
+  c.add(a, b);
+
+  c.ret(a);
+  c.endFunc();
+
+  // The prototype of the generated function changed also here.
+  typedef int (*FuncType)(const int*, intptr_t, intptr_t);
+  FuncType func = asmjit_cast&amp;lt;FuncType&amp;gt;(c.make());
+
+  // Array passed to &#39;func&#39;
+  const int array[] = { 1, 2, 3, 5, 8, 13 };
+
+  int x = func(array, 1, 2);
+  int y = func(array, 3, 5);
+
+  printf(&amp;quot;x=%d\n&amp;quot;, x); // Outputs &amp;quot;x=5&amp;quot;.
+  printf(&amp;quot;y=%d\n&amp;quot;, y); // Outputs &amp;quot;y=18&amp;quot;.
+
+  runtime.release((void*)func);
+  return 0;
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;references:59b35c32c7263523b55e5521ceedf0dc&#34;&gt;References&lt;/h5&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://www.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html&#34;&gt;Intel® 64 and IA-32 Architectures Software Developer Manuals&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://ref.x86asm.net/&#34;&gt;X86 Opcode and Instruction Reference&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://www.agner.org/optimize/instruction_tables.pdf&#34;&gt;Agner Fog&amp;rsquo;s Instruction Tables&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/kobalicek/asmjit&#34;&gt;AsmJit&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://cswww.essex.ac.uk/staff/poli/gp-field-guide/71LinearGeneticProgramming.html&#34;&gt;Linear Genetic Programming&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>column oriented databases &amp; formats</title>
+      <link>http://astocko.com/post/column-oriented-formats/</link>
+      <pubDate>Thu, 30 Apr 2015 11:51:37 -0400</pubDate>
+      
+      <guid>http://astocko.com/post/column-oriented-formats/</guid>
+      <description>
+
+&lt;p&gt;Column oriented databases have become a staple in the big data analytics scene. This article will analyze the in-memory and on-disk formats of &lt;a href=&#34;http://kx.com/kdb-plus.php&#34;&gt;kdb+&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;kdb+ is a high performance timeseries database implemented in the &lt;a href=&#34;http://en.wikipedia.org/wiki/K_%28programming_language%29&#34;&gt;K&lt;/a&gt; language and widely deployed within the financial sector. &lt;a href=&#34;http://en.wikipedia.org/wiki/Q_%28programming_language_from_Kx_Systems%29&#34;&gt;Q&lt;/a&gt; is a wrapper around K to provide an easier interface to the database. kdb+ is implemented as a column store which makes operations like aggregations extremely fast.&lt;/p&gt;
+
+&lt;p&gt;###Architecture
+While kdb+ is both an in-memory and a persistent disk based column oriented data store, the in-memory representation and the on-disk file formats are quite simple. Tables in kdb+ are essentially ordered dictionaries of typed columns sorted on one or more columns. In python an in-memory table of stock symbols, dates, and their closing prices could be implemented as follows:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;from collections import OrderedDict
+daily = OrderedDict(
+	[
+    	(&#39;symbol&#39;, [1, 1, 1, 1, 2, 2, 2, 2]), 
+        (&#39;date&#39;, [0, 0, 0, 0, 0, 0, 0, 0]), 
+        (&#39;prices&#39;, [90.01, 91.02, 92.03, 93.04, 60.01, 61.02, 62.02, 63.03])
+    ])
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;kdb+ makes tradeoffs in order to improve performance, two of which I have implemented in the table above and will explain below.&lt;/p&gt;
+
+&lt;h5 id=&#34;strings:4f945940ac3cd454a11bdc699f7ad3bf&#34;&gt;Strings&lt;/h5&gt;
+
+&lt;p&gt;Strings stored in tables are symbolized and mapped to integers in a bidirectional dictionary. This tradeoff enables very fast selects on columns like a stock symbol as we only have to seek for a integer (8bit to 64bit depending on the size of the symbol dictionary). For our table the symbol map could be implemented as:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;symbols = {
+	1 : &#39;GOOG&#39;,
+    2 : &#39;YHOO&#39;
+}
+symbols2 = {
+	&#39;GOOG&#39; : 1,
+    &#39;YHOO&#39; : 2
+}
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;dates:4f945940ac3cd454a11bdc699f7ad3bf&#34;&gt;Dates&lt;/h5&gt;
+
+&lt;p&gt;Dates in kdb+ are also stored as integers and calculated as the distance from the epoch 01-01-2000. So, in our example implementation, 0 represents 01-01-2000.&lt;/p&gt;
+
+&lt;h5 id=&#34;disk-file-format:4f945940ac3cd454a11bdc699f7ad3bf&#34;&gt;Disk File Format&lt;/h5&gt;
+
+&lt;p&gt;kdb+ can export tables in multiple formats. First, the in-memory table can be written to a binary file in row format:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;uint8,uint32,float
+1,0,90.01
+1,0,91.02
+1,0,92.03
+1,0,93.04
+2,0,60.01
+2,0,61.02
+2,0,62.03
+2,0,63.03
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Secondly, the table can be splayed and each column is written to its own binary file:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;symbols.col (uint8): [1, 1, 1, 1, 2, 2, 2, 2]
+dates.col (uint32): [0, 0, 0, 0, 0, 0, 0, 0]
+prices.col (float): [90.01, 91.02, 92.03, 93.04, 60.01, 61.02, 62.02, 63.03]
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Thirdly, the table can be partitioned by a column value and then splayed:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;symbol_1 directory:
+	dates.col (uint32): [0, 0, 0, 0]
+    prices.col (float): [90.01, 91.02, 92.03, 93.04]
+symbol_2 directory:
+	dates.col (uint32): [1, 1, 1, 1]
+    prices.col (float): [60.01, 61.02, 62.02, 63.03]
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;h5 id=&#34;querying:4f945940ac3cd454a11bdc699f7ad3bf&#34;&gt;Querying&lt;/h5&gt;
+
+&lt;p&gt;When kdb+ loads a table, it memory maps (mmap on linux) either the single table file, each column for a splayed table, or all columns for a partitioned table. Every splayed column is mapped as a continuous array of a data type and accessed accordingly. kdb+ also loads the symbol dictionary for symbol lookups. In our example, the table is sorted on the symbol and date columns.&lt;/p&gt;
+
+&lt;h6 id=&#34;select-price-where-symbol-goog:4f945940ac3cd454a11bdc699f7ad3bf&#34;&gt;Select price WHERE symbol = &amp;lsquo;GOOG&amp;rsquo;&lt;/h6&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;p&gt;Symbol is a symbol column, so GOOG is looked up and mapped to 1&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;In the single table file layout, we perform a binary search on the array of structures and find all rows with a symbol value of 1 and return them&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;In the splayed table layout, we perform a binary search and record the indices of the symbol array where symbol = 1. Then we index into the memory mapped column (array) for price and use our recorded indices to select the matching entries. i.e. price[0:3].&lt;/p&gt;&lt;/li&gt;
+
+&lt;li&gt;&lt;p&gt;In the partitioned table, we perform the same steps as in the splayed table layout within the symbol_1 directory.&lt;/p&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Splaying a table enables us to seek through less data, particularly when dealing with wide row data sets, in order to find the records we want to query. As data size increases, partitioning tables on a column like symbol or date further reduces I/O overhead. Another benefit of single type columns is that aggregations such as calculating the mean or sum become single vector operations.&lt;/p&gt;
+
+&lt;h5 id=&#34;concluding-remarks:4f945940ac3cd454a11bdc699f7ad3bf&#34;&gt;Concluding Remarks&lt;/h5&gt;
+
+&lt;p&gt;kdb+ supports many more features, including indexing and compression, but the basic architecture is as described. The primary contributing factors to its performance are in its column oriented structure and data representation format. In a real world deployment, real-time data is typically appended to an in-memory table and then archived to a splayed/partitioned table sorted on one or multiple columns. Often, the same table is stored in varying sorted orders to further improve the performance of specific queries. Similar to big data database systems like Cassandra, tables are modeled to fit commonly executed queries.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>c macros &amp; terse c</title>
+      <link>http://astocko.com/post/c-macros-terse-c/</link>
+      <pubDate>Sun, 18 Jan 2015 11:48:49 -0400</pubDate>
+      
+      <guid>http://astocko.com/post/c-macros-terse-c/</guid>
+      <description>&lt;p&gt;C macro magic is typically frowned upon in the developer community. Heavy preprocessor usage can make code hard to read, expansion difficult to understand, and the resulting code error prone. While all these things are true, macros do have nice uses cases such as in the implementation of high performance generic containers in C (see &lt;a href=&#34;https://github.com/attractivechaos/klib&#34;&gt;klib&lt;/a&gt;).&lt;/p&gt;
+
+&lt;p&gt;I have also encountered significant code bases in which macros where used as a semantic overlay easing the programmer&amp;rsquo;s transition from their preferred language into C. One such example is Kx System&amp;rsquo;s &lt;a href=&#34;http://kx.com/kdb-plus.php&#34;&gt;kdb+&lt;/a&gt;, &lt;a href=&#34;http://queue.acm.org/detail.cfm?id=1531242&#34;&gt;Arthur Whitney&amp;rsquo;s&lt;/a&gt; high performance database system which is widely deployed in the financial industry.&lt;/p&gt;
+
+&lt;p&gt;Arthur Whitney designed the K and Q programming languages and his love for terse code has translated into their implementations. Following is a short code block from one of kdb+&amp;rsquo;s include files &lt;a href=&#34;http://kx.com/q/c/c/k.h&#34;&gt;k.h&lt;/a&gt;:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-C&#34;&gt;#ifndef KX
+#define KX
+typedef char*S,C;typedef unsigned char G;typedef short H;typedef int I;typedef long long J;typedef float E;typedef double F;typedef void V;
+#ifdef __cplusplus
+extern&amp;quot;C&amp;quot;{
+#endif
+#ifndef KXVER
+#error &amp;quot;Set KXVER=3 for kdb+3.0 or standalone c-api after 2011-04-20. Otherwise set KXVER=2&amp;quot;
+#endif
+#if KXVER&amp;gt;=3
+typedef struct k0{signed char m,a,t;C u;I r;union{G g;H h;I i;J j;E e;F f;S s;struct k0*k;struct{J n;G G0[1];};};}*K;
+typedef struct{G g[16];}U;
+#define kU(x) ((U*)kG(x))
+#define xU ((U*)xG)
+extern K ku(U),ktn(I,J),kpn(S,J);
+extern I setm(I);
+#define DO(n,x)	{J i=0,_i=(n);for(;i&amp;lt;_i;++i){x;}}
+#else
+typedef struct k0{I r;H t,u;union{G g;H h;I i;J j;E e;F f;S s;struct k0*k;struct{I n;G G0[1];};};}*K;
+extern K ktn(I,I),kpn(S,I);
+#define DO(n,x)	{I i=0,_i=(n);for(;i&amp;lt;_i;++i){x;}}
+#endif
+#ifdef __cplusplus
+}
+#endif
+//#include&amp;lt;string.h&amp;gt;
+// vector accessors, e.g. kF(x)[i] for float&amp;amp;datetime
+#define kG(x)	((x)-&amp;gt;G0)
+#define kC(x)	kG(x)
+#define kH(x)	((H*)kG(x))
+#define kI(x)	((I*)kG(x))
+#define kJ(x)	((J*)kG(x))
+#define kE(x)	((E*)kG(x))
+#define kF(x)	((F*)kG(x))
+#define kS(x)	((S*)kG(x))
+#define kK(x)	((K*)kG(x))
+.....
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;A cursory glance reveals that types are aliased with very short identifiers. Accessor macros are provided for different struct values and there is also a DO loop.&lt;/p&gt;
+
+&lt;p&gt;The source file &lt;a href=&#34;http://kx.com/q/c/c/c.c&#34;&gt;c.c&lt;/a&gt; shows how these macros are used and hints at what the entire kdb+ code base probably looks like.&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&#34;language-C&#34;&gt;#define Q(e,s) {if(e)return printf(&amp;quot;%s\n&amp;quot;,s),-1;}      //error
+
+int main(){K x,y;int c=khpu(&amp;quot;localhost&amp;quot;,5001,&amp;quot;usr:pwd&amp;quot;);
+ Q(c&amp;lt;0,&amp;quot;connect&amp;quot;)Q(!c,&amp;quot;access&amp;quot;)
+ Q(!k(-c,&amp;quot;`trade insert(12:34:56.789;`xx;93.5;300)&amp;quot;,(K)0),&amp;quot;err&amp;quot;) // statement insert
+ Q(!(x=k(c,&amp;quot;select sum size by sym from trade&amp;quot;,0)),&amp;quot;err&amp;quot;)    // statement select
+ Q(!(x=ktd(x)),&amp;quot;type&amp;quot;)                   // flip from keyedtable(dict)
+  y=x-&amp;gt;k;                                // dict from flip
+  y=kK(y)[1],printf(&amp;quot;%d cols:\n&amp;quot;,y-&amp;gt;n);  // data from dict
+  y=kK(y)[0],printf(&amp;quot;%d rows:\n&amp;quot;,y-&amp;gt;n);  // column 0
+  printf(&amp;quot;%s\n&amp;quot;,kS(y)[0]);               // sym 0 
+  r0(x);                                 // release memory
+ x=knk(4,kt(1000*(time(0)%86400)),ks(&amp;quot;xx&amp;quot;),kf(93.5),ki(300)); // data record
+// DO(10000,Q(!k(-c,&amp;quot;insert&amp;quot;,ks((S)&amp;quot;trade&amp;quot;),r1(x),(K)0),es)) // 10000 asynch inserts
+// k(c,&amp;quot;&amp;quot;,(K)0); // synch chase
+// return 0;
+ Q(!k(-c,&amp;quot;insert&amp;quot;,ks(&amp;quot;trade&amp;quot;),x,(K)0),&amp;quot;err&amp;quot;)                           // parameter insert
+ Q(!(x=k(c,&amp;quot;{[x]select from trade where size&amp;gt;x}&amp;quot;,ki(100),(K)0)),&amp;quot;err&amp;quot;) // parameter select
+  r0(x);
+ close(c);
+ return 0;}
+*/
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;The code is terse, but for someone with Arthur&amp;rsquo;s background, easy to read and write. Essentially he is mapping his stylistic preference for APL based languages onto C. While there is a certain elegeance to his approach, I do not recommend copying his style and becoming a macro addict in your large production applications which need to survive maintenance cycles.&lt;/p&gt;
+
+&lt;p&gt;If you&amp;rsquo;re interested in exploring the world of array programming languages, &lt;a href=&#34;http://www.jsoftware.com/&#34;&gt;J&lt;/a&gt; is a powerful open source implementation.&lt;/p&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>c resources</title>
+      <link>http://astocko.com/post/c-resources/</link>
+      <pubDate>Sat, 03 Jan 2015 11:44:44 -0400</pubDate>
+      
+      <guid>http://astocko.com/post/c-resources/</guid>
+      <description>
+
+&lt;p&gt;For an updated list, please see &lt;a href=&#34;https://github.com/astocko/c_compendium&#34;&gt;https://github.com/astocko/c_compendium&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h5 id=&#34;books:78b4e6933a8a43c42b994a2e01d9bd66&#34;&gt;Books&lt;/h5&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://c.learncodethehardway.org/book/&#34;&gt;Learn C The Hard Way&lt;/a&gt; - &lt;a href=&#34;http://en.wikipedia.org/wiki/Zed_Shaw&#34;&gt;Zed Shaw&amp;rsquo;s&lt;/a&gt; book, a great resource to learn C&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://shop.oreilly.com/product/0636920025108.do&#34;&gt;21st Century C: C Tips from the New School&lt;/a&gt; - A book to bring old school C programmers into the 21st Century&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h5 id=&#34;articles:78b4e6933a8a43c42b994a2e01d9bd66&#34;&gt;Articles&lt;/h5&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://250bpm.com/blog:4&#34;&gt;Why should I have written ZeroMQ in C, not C++&lt;/a&gt; - A set of articles on the merits of C over C++ from the Martin Sústrik&amp;rsquo;s point of view; controversial but interesting&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h5 id=&#34;libraries:78b4e6933a8a43c42b994a2e01d9bd66&#34;&gt;Libraries&lt;/h5&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/b-k/apophenia&#34;&gt;Apophenia&lt;/a&gt; - Apophenia is an open statistical library for working with data sets and statistical or simulation models. It provides functions on the same level as those of the typical stats package (such as OLS, probit, or singular value decomposition) but gives the user more flexibility to be creative in model-building&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://www.gnu.org/software/gsl/&#34;&gt;GNU Scientific Library&lt;/a&gt; - &amp;ldquo;The library provides a wide range of mathematical routines such as random number generators, special functions and least-squares fitting. There are over 1000 functions in total with an extensive test suite.&amp;rdquo;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/attractivechaos/klib&#34;&gt;Klib: a Generic Library in C&lt;/a&gt; - A macro heavy C library providing containers and other utilities. Avoids the use of void* for performance.&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://code.google.com/p/mongoose/&#34;&gt;Mongoose&lt;/a&gt; - An embeddable C http server&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://nanomsg.org/index.html&#34;&gt;Nanomsg&lt;/a&gt; - An evolution of ZeroMQ, a high performance brokerless message queue&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://www.math.sci.hiroshima-u.ac.jp/~%20m-mat/MT/SFMT/index.html&#34;&gt;SFMT&lt;/a&gt; - SIMD version of the Mersenne Twister random number generator. Floating point and integer versions&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://tinycthread.github.io/&#34;&gt;TinyCThread&lt;/a&gt; - Small, portable implementation of the C11 threads API&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h5 id=&#34;build-systems:78b4e6933a8a43c42b994a2e01d9bd66&#34;&gt;Build Systems&lt;/h5&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://www.cmake.org/&#34;&gt;CMake&lt;/a&gt; - CMake is a family of tools designed to build, test and package software&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://martine.github.io/ninja/&#34;&gt;Ninja&lt;/a&gt; - Ninja is a small build system with a focus on speed. It differs from other build systems in two major respects: it is designed to have its input files generated by a higher-level build system, and it is designed to run builds as fast as possible&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://gittup.org/tup/&#34;&gt;tup&lt;/a&gt; - Tup is a file-based build system for Linux, OSX, and Windows&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h5 id=&#34;tools:78b4e6933a8a43c42b994a2e01d9bd66&#34;&gt;Tools&lt;/h5&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;http://nedbatchelder.com/code/cog/&#34;&gt;Cog&lt;/a&gt; - Code generation tool&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;http://valloric.github.io/YouCompleteMe/&#34;&gt;YouCompleteMe&lt;/a&gt; - VIM code completion for C-family and other languages&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;https://github.com/facebook/warp&#34;&gt;Warp&lt;/a&gt; - Alternative performance oriented C/C++ preprocessor implemented in D by Facebook&lt;/li&gt;
+&lt;/ul&gt;
+</description>
+    </item>
+    
+    <item>
+      <title>reboot</title>
+      <link>http://astocko.com/post/reboot/</link>
+      <pubDate>Tue, 23 Dec 2014 11:14:55 -0400</pubDate>
+      
+      <guid>http://astocko.com/post/reboot/</guid>
+      <description>&lt;p&gt;I&amp;rsquo;ve decided to reboot my blog and will be writing about my thoughts as they
+pertain to computer science, economics, and finance.&lt;/p&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>
