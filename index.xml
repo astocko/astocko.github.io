@@ -6,8 +6,29 @@
     <description>Recent content on Applied Knowledge</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Sun, 12 Jul 2015 11:54:19 -0400</lastBuildDate>
+    <lastBuildDate>Fri, 23 Oct 2015 11:08:36 -0400</lastBuildDate>
     <atom:link href="http://astocko.com/index.xml" rel="self" type="application/rss+xml" />
+    
+    <item>
+      <title>about</title>
+      <link>http://astocko.com/about/</link>
+      <pubDate>Fri, 23 Oct 2015 11:08:36 -0400</pubDate>
+      
+      <guid>http://astocko.com/about/</guid>
+      <description>
+
+&lt;h2 id=&#34;about:6083a88ee3411b0d17ce02d738f69d47&#34;&gt;About&lt;/h2&gt;
+
+&lt;p&gt;Managing Principal at ARD Capital, LLC. Melding computer science, economics,
+finance, and mathematics to create innovative solutions.&lt;/p&gt;
+
+&lt;p&gt;email:   alex [at] hoo dot la&lt;/p&gt;
+
+&lt;p&gt;github:  &lt;a href=&#34;https://github.com/astocko&#34;&gt;astocko&lt;/a&gt;&lt;/p&gt;
+
+&lt;p&gt;twitter: &lt;a href=&#34;https://twitter.com/astocko&#34;&gt;@astocko&lt;/a&gt;&lt;/p&gt;
+</description>
+    </item>
     
     <item>
       <title>dynamic x86-64 generation &amp; jit</title>
